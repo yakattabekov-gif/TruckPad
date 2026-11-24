@@ -1,0 +1,42 @@
+name: Build IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+# Собирает НЕПОДПИСАННЫЙ IPA. Подпишите его своим сертификатом локально
+# (например, zsign, Sideloadly, iOS App Signer), секреты в репозиторий не нужны.
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Archive (unsigned)
+        working-directory: ios
+        run: |
+          xcodebuild archive \
+            -project TruckPad.xcodeproj -scheme TruckPad \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/TruckPad.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+
+      - name: Package IPA
+        run: |
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          cp -R "$RUNNER_TEMP/TruckPad.xcarchive/Products/Applications/TruckPad.app" "$RUNNER_TEMP/ipa/Payload/"
+          cd "$RUNNER_TEMP/ipa" && zip -qr "$GITHUB_WORKSPACE/TruckPad-unsigned.ipa" Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TruckPad-unsigned-ipa
+          path: TruckPad-unsigned.ipa
